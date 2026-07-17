@@ -151,6 +151,20 @@
       appendLog(event.progress);
     });
 
+    // If the socket drops or reconnects mid-job, never leave the UI stuck
+    // in a "busy" state — otherwise the next clone would be blocked until
+    // a full page reload.
+    socket.on('disconnect', function () {
+      if (busy) {
+        appendLog('Connection dropped — you can start another clone.', 'err');
+        setStatus('Disconnected', 'error');
+        setBusy(false);
+      }
+    });
+    socket.on('reconnect', function () {
+      setBusy(false);
+    });
+
     form.addEventListener('submit', function (e) {
       e.preventDefault();
       if (busy) return;
