@@ -12,10 +12,12 @@ const path = require('path');
 const { URL } = require('url');
 
 const DEFAULTS = {
-  maxPages: 60, // safety cap so a huge site can't run forever
-  maxAssets: 600,
-  timeoutMs: 20000,
-  concurrency: 5,
+  // Unlimited by default. In the future these can be capped per
+  // subscription tier — Infinity means "no limit".
+  maxPages: Infinity, // safety cap so a huge site can't run forever
+  maxAssets: Infinity,
+  timeoutMs: 45000,
+  concurrency: 8,
 };
 
 const ASSET_ATTRS = ['src', 'href', 'poster', 'data-src'];

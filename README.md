@@ -44,11 +44,12 @@ Then open **http://localhost:3000/**, paste a URL, and hit **Clone site**.
 Browser ──(socket: request)──▶ Node server
                                  │
                                  ├─ crawler/  → fetch pages + assets, rewrite links
-                                 │              into a clone-me-<timestamp> folder
+                                 │              into a temp clone-me-<timestamp> folder
                                  │
-                                 └─ archiver  → zip the folder into /public/sites
+                                 └─ archiver  → zip the folder into a temp file,
+                                 │              exposed via a one-time download id
                                  │
-Browser ◀─(socket: progress ─────┘  + auto-download the zip)
+Browser ◀─(socket: progress ─────┘  + auto-download, then the zip is deleted)
 ```
 
 | Piece | Role |
@@ -60,14 +61,18 @@ Browser ◀─(socket: progress ─────┘  + auto-download the zip)
 
 ## Configuration
 
-The crawler accepts limits (defined in `crawler/index.js`):
+The crawler runs **unlimited by default** — it crawls every same-site page and asset it can find. The limits live in `crawler/index.js` and can be capped later (e.g. per subscription tier):
 
 | Option | Default | Meaning |
 |--------|---------|---------|
-| `maxPages` | `60` | Max HTML pages to crawl. |
-| `maxAssets` | `600` | Max assets to download. |
-| `timeoutMs` | `20000` | Per-request timeout. |
-| `concurrency` | `5` | Parallel downloads. |
+| `maxPages` | `Infinity` | Max HTML pages to crawl. |
+| `maxAssets` | `Infinity` | Max assets to download. |
+| `timeoutMs` | `45000` | Per-request timeout. |
+| `concurrency` | `8` | Parallel downloads. |
+
+## Where clones are stored
+
+Nowhere permanent. Each clone is built in a temp folder, zipped, handed to your browser through a **one-time download link**, and then deleted. Undownloaded zips are dropped automatically after 15 minutes. The server keeps no copy.
 
 ## Please clone responsibly
 

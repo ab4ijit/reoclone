@@ -129,13 +129,13 @@
         var summary = 'Cloned ' + (event.pages || 0) + ' pages and ' + (event.assets || 0) + ' assets.';
         appendLog(summary, 'ok');
 
-        var url = '/sites/' + encodeURIComponent(event.file) + '.zip';
+        var url = '/download/' + encodeURIComponent(event.downloadId);
         downloadWebsite.href = url;
         downloadWebsite.hidden = false;
         // Auto-start the download for the user.
         var a = document.createElement('a');
         a.href = url;
-        a.download = event.file + '.zip';
+        a.download = event.filename || 'clone.zip';
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);

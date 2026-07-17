@@ -1,19 +1,22 @@
 /**
  * Socket handler for ReoClone.
  *
- * For every clone request we create a dedicated working folder named
- * `clone-me-<timestamp>` so each job is isolated, run the built-in crawler,
- * then zip the result into /public/sites and tell the client to auto-download.
+ * Each clone request runs in its own `clone-me-<timestamp>` temp folder,
+ * gets zipped into another temp file, and is handed to the browser through
+ * a one-time download id. Nothing is stored under the app's public folder —
+ * the temp folder is deleted right after zipping, and the zip itself is
+ * deleted the moment the user's download finishes.
  */
 
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
+const crypto = require('crypto');
 const archiver = require('archiver');
 const { cloneWebsite, normalizeUrl } = require('../crawler');
+const downloads = require('../downloads');
 
 const WORK_ROOT = path.join(os.tmpdir(), 'reoclone-jobs');
-const SITES_DIR = path.join(__dirname, '..', 'public', 'sites');
 
 function ensureDir(dir) {
   fs.mkdirSync(dir, { recursive: true });
@@ -40,7 +43,6 @@ function zipFolder(sourceDir, zipPath) {
 
 module.exports = (io) => {
   ensureDir(WORK_ROOT);
-  ensureDir(SITES_DIR);
 
   io.on('connection', (socket) => {
     socket.on('request', async (data) => {
@@ -61,10 +63,10 @@ module.exports = (io) => {
         return;
       }
 
-      // Timestamp comes from the request so the module stays pure/testable.
       const stamp = Date.now();
       const jobFolder = `clone-me-${stamp}`;
       const workDir = path.join(WORK_ROOT, jobFolder);
+      const zipPath = path.join(WORK_ROOT, `${jobFolder}.zip`);
       ensureDir(workDir);
 
       console.log('Clone request %s -> %s', token, entry.href);
@@ -73,7 +75,6 @@ module.exports = (io) => {
       try {
         const result = await cloneWebsite(entry.href, workDir, {
           onProgress: (msg) => emit({ progress: msg }),
-          onFile: () => {},
         });
 
         if (result.pages === 0) {
@@ -84,23 +85,29 @@ module.exports = (io) => {
 
         emit({ progress: 'Converting' });
 
-        const zipName = `${slugifyHost(result.host)}-${stamp}`;
-        const zipPath = path.join(SITES_DIR, `${zipName}.zip`);
-        const bytes = await zipFolder(workDir, zipPath);
+        await zipFolder(workDir, zipPath);
 
-        console.log('Archived %s (%d bytes)', zipName, bytes);
+        // The working folder is no longer needed once it's zipped.
+        fs.rm(workDir, { recursive: true, force: true }, () => {});
+
+        // Register a one-time download; the zip is removed after it's served.
+        const downloadId = crypto.randomBytes(16).toString('hex');
+        const filename = `${slugifyHost(result.host)}-${stamp}.zip`;
+        downloads.register(downloadId, zipPath, filename);
+
+        console.log('Ready for download: %s (%s)', filename, downloadId);
         emit({
           progress: 'Completed',
-          file: zipName,
+          downloadId,
+          filename,
           pages: result.pages,
           assets: result.assets,
         });
       } catch (err) {
         console.error('Clone failed:', err);
         emit({ progress: `Error: ${err.message}`, error: true });
-      } finally {
-        // Clean up the working folder; the zip in /public/sites remains.
         fs.rm(workDir, { recursive: true, force: true }, () => {});
+        fs.rm(zipPath, { force: true }, () => {});
       }
     });
 
