@@ -64,7 +64,13 @@
 
 <script>
   (function () {
-    var socket = io.connect(document.URL);
+    var socket = io.connect(document.URL, {
+      reconnection: true,
+      reconnectionAttempts: Infinity,
+      reconnectionDelay: 1000,
+      reconnectionDelayMax: 5000,
+      timeout: 20000,
+    });
     if (!localStorage['reoclone_token']) {
       localStorage['reoclone_token'] = generateToken(24);
     }
@@ -105,6 +111,26 @@
       input.disabled = state;
     }
 
+    function showDownload(event) {
+      setBusy(false);
+      setStatus('Done', 'done');
+      barFill.className = 'bar-fill';
+      barFill.style.width = '100%';
+      var summary = 'Cloned ' + (event.pages || 0) + ' pages and ' + (event.assets || 0) + ' assets.';
+      appendLog(summary, 'ok');
+
+      var url = '/download/' + encodeURIComponent(event.downloadId);
+      downloadWebsite.href = url;
+      downloadWebsite.hidden = false;
+      // Auto-start the download for the user.
+      var a = document.createElement('a');
+      a.href = url;
+      a.download = event.filename || 'clone.zip';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    }
+
     socket.on(token, function (event) {
       if (event.error) {
         setBusy(false);
@@ -117,52 +143,42 @@
 
       if (event.progress === 'Converting') {
         setStatus('Compressing into a zip…', 'busy');
-        barFill.style.width = '92%';
+        barFill.style.width = '95%';
         appendLog('All files downloaded — building your zip…', 'ok');
         return;
       }
 
       if (event.progress === 'Completed') {
-        setBusy(false);
-        setStatus('Done', 'done');
-        barFill.style.width = '100%';
-        var summary = 'Cloned ' + (event.pages || 0) + ' pages and ' + (event.assets || 0) + ' assets.';
-        appendLog(summary, 'ok');
-
-        var url = '/download/' + encodeURIComponent(event.downloadId);
-        downloadWebsite.href = url;
-        downloadWebsite.hidden = false;
-        // Auto-start the download for the user.
-        var a = document.createElement('a');
-        a.href = url;
-        a.download = event.filename || 'clone.zip';
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
+        showDownload(event);
         return;
       }
 
-      if (typeof event.progress === 'string' && event.progress.indexOf('200 OK') !== -1) {
-        fileCount++;
+      // Server sends an authoritative running file count with each update.
+      if (typeof event.fileCount === 'number') {
+        fileCount = event.fileCount;
         nFiles.textContent = fileCount;
-        var pct = Math.min(88, 8 + fileCount * 2);
+        var pct = Math.min(90, 8 + fileCount * 0.12);
         barFill.style.width = pct + '%';
+      }
+      if (event.resumed) {
+        setBusy(true);
+        setStatus(event.progress, 'busy');
       }
       appendLog(event.progress);
     });
 
-    // If the socket drops or reconnects mid-job, never leave the UI stuck
-    // in a "busy" state — otherwise the next clone would be blocked until
-    // a full page reload.
+    // A big clone keeps running on the server even if the socket blips.
+    // On drop we DON'T cancel — we show "reconnecting" and let socket.io
+    // auto-reconnect, then ask the server to resume our job's state.
     socket.on('disconnect', function () {
       if (busy) {
-        appendLog('Connection dropped — you can start another clone.', 'err');
-        setStatus('Disconnected', 'error');
-        setBusy(false);
+        setStatus('Reconnecting…', 'busy');
+        appendLog('Connection blip — reconnecting, your clone is still running…', 'err');
       }
     });
     socket.on('reconnect', function () {
-      setBusy(false);
+      appendLog('Reconnected.', 'ok');
+      socket.emit('resume', { token: token });
     });
 
     form.addEventListener('submit', function (e) {

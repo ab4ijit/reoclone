@@ -1,0 +1,3 @@
+connected
+[converting] socket-msgs=803 files=3203
+COMPLETED pages=1195 assets=2009 total-msgs=804 disconnects=0

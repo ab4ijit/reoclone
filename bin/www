@@ -22,9 +22,11 @@ app.set('port', port);
 var server = http.createServer(app);
 var io = require('socket.io')(server, {
   // Keep the connection alive through long crawls / large zips so the
-  // client never misses the final "Completed" event.
+  // client never misses the final "Completed" event. Larger buffer +
+  // longer timeouts prevent big-site disconnects.
   pingInterval: 25000,
-  pingTimeout: 120000,
+  pingTimeout: 180000,
+  maxHttpBufferSize: 1e8,
 });
 
 // Pass socket Object to it's modula 
